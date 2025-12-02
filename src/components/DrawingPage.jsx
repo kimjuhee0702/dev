@@ -1,5 +1,8 @@
+// src/pages/DrawingPage.jsx
 import { useState } from "react";
-import DrawingCanvas from "./DrawingCanvas";
+import DrawingCanvas from "../components/DrawingCanvas";
+import { useNavigate, useParams } from "react-router-dom";
+
 import shape1 from "../assets/shape1.png";
 import shape2 from "../assets/shape2.png";
 import shape3 from "../assets/shape3.png";
@@ -9,7 +12,6 @@ import shape6 from "../assets/shape6.png";
 import shape7 from "../assets/shape7.png";
 import shape8 from "../assets/shape8.png";
 import shape9 from "../assets/shape9.png";
-import { useNavigate } from "react-router-dom";
 
 const shapes = {
   1: shape1,
@@ -23,28 +25,27 @@ const shapes = {
   9: shape9,
 };
 
-export default function DrawingPage() {
-  const [current, setCurrent] = useState(1);
+export default function DrawingPage({ sessionId }) {
   const navigate = useNavigate();
+  const { id } = useParams();  // /draw/:id
+  const currentFigure = Number(id);
 
   const handleNext = () => {
-    if (current === 9) {
-      // ⭐ 9번 도형 끝 → 결과 페이지로 이동
-      navigate("/result");
-    } else {
-      setCurrent((n) => n + 1);
-    }
+    if (currentFigure < 9) navigate(`/draw/${currentFigure + 1}`);
+    else navigate("/result", { state: { session_id: sessionId } });
   };
 
   const handlePrev = () => {
-    if (current > 1) setCurrent((n) => n - 1);
+    if (currentFigure > 1) navigate(`/draw/${currentFigure - 1}`);
   };
 
   return (
     <DrawingCanvas
-      shapeImage={shapes[current]}
+      shapeImage={shapes[currentFigure]}
       onNext={handleNext}
       onPrev={handlePrev}
+      sessionId={sessionId}
+      figureId={currentFigure}
     />
   );
 }
