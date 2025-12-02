@@ -1,7 +1,13 @@
 import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
+export default function DrawingCanvas({
+  shapeImage,
+  onNext,
+  onPrev,
+  sessionId,   // ⭐ 추가
+  figureId     // ⭐ 추가
+}) {
   const navigate = useNavigate();
 
   const canvasRef = useRef(null);
@@ -9,7 +15,7 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
   const ctxRef = useRef(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
-  const [mode, setMode] = useState("pen"); // 펜/지우개/정밀지우개
+  const [mode, setMode] = useState("pen");
   const [undoStack, setUndoStack] = useState([]);
 
   const [startTime, setStartTime] = useState(null);
@@ -63,18 +69,26 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
   };
 
   /* ---------------- 드로잉 ---------------- */
+  // ⭐ 수정된 startDrawing
   const startDrawing = ({ nativeEvent }) => {
     saveState();
-    const { offsetX, offsetY } = nativeEvent;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = nativeEvent.clientX - rect.left;
+    const y = nativeEvent.clientY - rect.top;
+
     ctxRef.current.beginPath();
-    ctxRef.current.moveTo(offsetX, offsetY);
+    ctxRef.current.moveTo(x, y);
     setIsDrawing(true);
   };
 
+  // ⭐ 수정된 draw
   const draw = ({ nativeEvent }) => {
     if (!isDrawing) return;
 
-    const { offsetX, offsetY } = nativeEvent;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = nativeEvent.clientX - rect.left;
+    const y = nativeEvent.clientY - rect.top;
 
     if (mode === "pen") {
       ctxRef.current.globalCompositeOperation = "source-over";
@@ -87,7 +101,7 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
       ctxRef.current.lineWidth = 10;
     }
 
-    ctxRef.current.lineTo(offsetX, offsetY);
+    ctxRef.current.lineTo(x, y);
     ctxRef.current.stroke();
   };
 
@@ -110,25 +124,28 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
       ? "not-allowed"
       : "default";
 
-  /* ---------------- 업로드 (Node.js 서버 연결) ---------------- */
+  /* ---------------- 업로드 (session_id + class_id 추가) ---------------- */
   const uploadImage = async () => {
     const canvas = canvasRef.current;
 
     canvas.toBlob(async (blob) => {
       const formData = new FormData();
+
       formData.append("image", blob, "drawing.png");
-      formData.append("user_id", "1234"); // 로그인 user_id로 변경 가능
+
+      formData.append("session_id", sessionId);
+      formData.append("class_id", figureId);
 
       try {
-        const res = await fetch("http://43.203.133.98:3000/api/bgt/upload", {
+        const res = await fetch("http://3.37.106.67:3000/figure/upload", {
           method: "POST",
           body: formData,
         });
 
         const data = await res.json();
+        console.log("업로드 성공:", data);
 
-        // 예: { score: 82, grade: "B" }
-        navigate("/result", { state: data });
+        onNext();
 
       } catch (err) {
         console.error(err);
@@ -154,7 +171,6 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
 
       <div className="flex gap-4 items-center">
 
-        {/* 펜 */}
         <button
           onClick={() => setMode("pen")}
           className={toolBtn(mode === "pen", "bg-blue-600")}
@@ -162,7 +178,6 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
           ✏️ 펜
         </button>
 
-        {/* 큰 지우개 */}
         <button
           onClick={() => setMode("erase")}
           className={toolBtn(mode === "erase", "bg-red-600")}
@@ -170,7 +185,6 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
           🧽 큰 지우개
         </button>
 
-        {/* 정밀 지우개 */}
         <button
           onClick={() => setMode("smallErase")}
           className={toolBtn(mode === "smallErase", "bg-red-500")}
@@ -178,7 +192,6 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
           🩹 정밀 지우개
         </button>
 
-        {/* 나머지 버튼 */}
         <button onClick={clearCanvas} className={normalBtn}>
           전체 지우기
         </button>
@@ -203,7 +216,6 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
         </button>
       </div>
 
-      {/* ---------------- 반반 레이아웃 ---------------- */}
       <div className="flex w-full mt-4" style={{ height: "650px" }}>
 
         <div className="flex-1 flex justify-center items-center border-r bg-white">
