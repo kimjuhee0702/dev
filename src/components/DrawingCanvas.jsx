@@ -1,7 +1,13 @@
 import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
+export default function DrawingCanvas({
+  shapeImage,
+  onNext,
+  onPrev,
+  sessionId,
+  figureId,
+}) {
   const navigate = useNavigate();
 
   const canvasRef = useRef(null);
@@ -9,11 +15,29 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
   const ctxRef = useRef(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
-  const [mode, setMode] = useState("pen"); // 펜/지우개/정밀지우개
+  const [mode, setMode] = useState("pen");
   const [undoStack, setUndoStack] = useState([]);
 
   const [startTime, setStartTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
+
+  /* ---------------- 세션 POST 테스트 함수 ---------------- */
+  const testSession = async () => {
+    try {
+      const res = await fetch("http://3.37.106.67:3000/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: "test_user_01" }),
+      });
+
+      const data = await res.json();
+      console.log("Session POST 테스트 결과:", data);
+      alert(`Session ID: ${data.session_id || "없음"}`);
+    } catch (err) {
+      console.error("Session POST 테스트 에러:", err);
+      alert("Session 요청 실패! 콘솔 확인해줘.");
+    }
+  };
 
   /* ---------------- 캔버스 크기 자동 설정 ---------------- */
   useEffect(() => {
@@ -32,6 +56,19 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
 
     setStartTime(Date.now());
   }, []);
+
+  /* ---------------- 🔥 figureId 변경될 때 캔버스 초기화 ---------------- */
+  useEffect(() => {
+    if (ctxRef.current && canvasRef.current) {
+      ctxRef.current.clearRect(
+        0,
+        0,
+        canvasRef.current.width,
+        canvasRef.current.height
+      );
+      setUndoStack([]);
+    }
+  }, [figureId]); // ← 그림 번호 바뀌면 캔버스 자동 초기화
 
   /* ---------------- 타이머 ---------------- */
   useEffect(() => {
@@ -56,7 +93,12 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
     const img = new Image();
     img.src = last;
     img.onload = () => {
-      ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      ctxRef.current.clearRect(
+        0,
+        0,
+        canvasRef.current.width,
+        canvasRef.current.height
+      );
       ctxRef.current.drawImage(img, 0, 0);
     };
     setUndoStack([...undoStack]);
@@ -97,45 +139,59 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
   };
 
   const clearCanvas = () => {
-    ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    ctxRef.current.clearRect(
+      0,
+      0,
+      canvasRef.current.width,
+      canvasRef.current.height
+    );
   };
 
-  /* ---------------- 마우스 커서 ---------------- */
-  const cursorStyle =
-    mode === "pen"
-      ? "crosshair"
-      : mode === "erase"
-      ? "cell"
-      : mode === "smallErase"
-      ? "not-allowed"
-      : "default";
-
-  /* ---------------- 업로드 (Node.js 서버 연결) ---------------- */
+  /* ---------------- 업로드 (session_id + class_id 추가) ---------------- */
   const uploadImage = async () => {
     const canvas = canvasRef.current;
 
+    console.log("업로드 직전 sessionId:", sessionId);
+    console.log("업로드 직전 figureId:", figureId);
+
     canvas.toBlob(async (blob) => {
       const formData = new FormData();
+
       formData.append("image", blob, "drawing.png");
-      formData.append("user_id", "1234"); // 로그인 user_id로 변경 가능
+      formData.append("session_id", sessionId);
+      formData.append("class_id", figureId);
 
       try {
-        const res = await fetch("http://43.203.133.98:3000/api/bgt/upload", {
+        const res = await fetch("http://3.37.106.67:3000/figure/upload", {
           method: "POST",
           body: formData,
         });
 
-        const data = await res.json();
+        const raw = await res.text();
+        console.log("업로드 응답 RAW:", raw);
 
-        // 예: { score: 82, grade: "B" }
-        navigate("/result", { state: data });
+        if (!res.ok) {
+          alert("업로드 실패! 상태: " + res.status);
+          return;
+        }
 
+        onNext();
       } catch (err) {
-        console.error(err);
-        alert("업로드 실패!");
+        console.error("업로드 실패:", err);
+        alert("업로드 실패! 콘솔 확인해줘.");
       }
     }, "image/png");
   };
+
+  /* ---------------- 커서 아이콘 ---------------- */
+  const cursorStyle =
+    mode === "pen"
+      ? "url('/cursor-pen.png'), auto"
+      : mode === "erase"
+      ? "url('/eraser.png'), auto"
+      : mode === "smallErase"
+      ? "url('/cursor-small-eraser.png'), auto"
+      : "default";
 
   /* ---------------- 버튼 디자인 ---------------- */
   const toolBtn = (active, color) =>
@@ -152,60 +208,45 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
       <h2 className="text-3xl font-bold">왼쪽 도형을 따라 그려주세요</h2>
       <p className="text-xl text-gray-700">총 소요 시간: {elapsed}초</p>
 
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-3 items-center">
 
-        {/* 펜 */}
+        {/* 🔹 세션 POST 테스트 버튼 */}
+        <button
+          onClick={testSession}
+          className="px-4 py-2 bg-purple-500 text-white rounded-lg shadow hover:bg-purple-600"
+        >
+          Test Session POST
+        </button>
+
         <button
           onClick={() => setMode("pen")}
           className={toolBtn(mode === "pen", "bg-blue-600")}
-        >
-          ✏️ 펜
-        </button>
+        >✏️ 펜</button>
 
-        {/* 큰 지우개 */}
         <button
           onClick={() => setMode("erase")}
           className={toolBtn(mode === "erase", "bg-red-600")}
-        >
-          🧽 큰 지우개
-        </button>
+        >🧽 큰 지우개</button>
 
-        {/* 정밀 지우개 */}
         <button
           onClick={() => setMode("smallErase")}
           className={toolBtn(mode === "smallErase", "bg-red-500")}
-        >
-          🩹 정밀 지우개
-        </button>
+        >🩹 정밀 지우개</button>
 
-        {/* 나머지 버튼 */}
-        <button onClick={clearCanvas} className={normalBtn}>
-          전체 지우기
-        </button>
-
-        <button onClick={restoreLast} className={normalBtn}>
-          🔙 되돌리기
-        </button>
-
-        <button onClick={onPrev} className={normalBtn}>
-          ◀ 이전
-        </button>
-
-        <button onClick={onNext} className={normalBtn}>
-          다음 ▶
-        </button>
+        <button onClick={clearCanvas} className={normalBtn}>전체 지우기</button>
+        <button onClick={restoreLast} className={normalBtn}>🔙 되돌리기</button>
+        <button onClick={onPrev} className={normalBtn}>◀ 이전</button>
+        <button onClick={onNext} className={normalBtn}>다음 ▶</button>
 
         <button
           onClick={uploadImage}
-          className="px-6 py-3 bg-green-500 text-white text-lg rounded-2xl font-bold shadow-md hover:bg-green-600 active:scale-95"
+          className="px-6 py-3 bg-green-500 text-white text-lg rounded-2xl font-bold shadow hover:bg-green-600"
         >
           제출하기
         </button>
       </div>
 
-      {/* ---------------- 반반 레이아웃 ---------------- */}
       <div className="flex w-full mt-4" style={{ height: "650px" }}>
-
         <div className="flex-1 flex justify-center items-center border-r bg-white">
           <img src={shapeImage} className="max-w-[80%] max-h-[80%] object-contain" />
         </div>
@@ -221,7 +262,6 @@ export default function DrawingCanvas({ shapeImage, onNext, onPrev }) {
             className="border rounded-lg bg-white w-full h-full"
           />
         </div>
-
       </div>
     </div>
   );
